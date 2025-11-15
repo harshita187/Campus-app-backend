@@ -18,13 +18,42 @@ if (!process.env.MONGO_URI) {
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Middleware
-app.use(cors());
+const corsOptions = {
+  origin: function (origin, callback) {
+    const allowedOrigins = [
+      "http://localhost:3000",
+      "http://127.0.0.1:3000",
+      "http://192.168.1.9:3000",
+      /^http:\/\/192\.168\.\d+\.\d+:3000$/,
+      /^http:\/\/10\.\d+\.\d+\.\d+:3000$/,
+    ];
+
+    if (!origin) {
+      return callback(null, true);
+    }
+
+    const isAllowed = allowedOrigins.some((allowed) => {
+      if (typeof allowed === "string") {
+        return origin === allowed;
+      }
+      return allowed.test(origin);
+    });
+
+    callback(null, isAllowed);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  exposedHeaders: ["Authorization"],
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 
 const authRoutes = require("./routes/authRoutes");
 app.use("/api/auth", authRoutes);
-
 
 // MongoDB Connection
 mongoose
@@ -40,9 +69,9 @@ app.get("/", (req, res) => {
   res.send("🌐 Campus App Backend is alive!");
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Backend server is up and running on port ${PORT}!`);
+  console.log(
+    `🌐 Accessible at: http://localhost:${PORT} or http://0.0.0.0:${PORT}`
+  );
 });
-
-
-
