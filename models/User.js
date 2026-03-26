@@ -9,6 +9,8 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true,
     unique: true,
+    lowercase: true,
+    trim: true,
   },
   password: {
     type: String,
@@ -17,7 +19,12 @@ const userSchema = new mongoose.Schema({
   phone: {
     type: String,
     required: true,
+    trim: true,
   },
-});
+  refreshTokenVersion: {
+    type: Number,
+    default: 0,
+  },
+}, { timestamps: true });
 
 module.exports = mongoose.model("User", userSchema);
