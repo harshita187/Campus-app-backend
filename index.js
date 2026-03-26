@@ -1,77 +1,83 @@
 const express = require("express");
+const http = require("http");
 const mongoose = require("mongoose");
 const cors = require("cors");
-const dotenv = require("dotenv");
-const path = require("path");
-
-// Load environment variables from .env
-dotenv.config();
-
-// DEBUG: Check if MONGO_URI is loaded
-if (!process.env.MONGO_URI) {
-  console.error("❌ MONGO_URI is undefined! Check your .env file.");
-  process.exit(1); // Stop the server if URI is missing
-} else {
-  console.log("✅ MONGO_URI loaded:", process.env.MONGO_URI);
-}
+const helmet = require("helmet");
+const rateLimit = require("express-rate-limit");
+const cookieParser = require("cookie-parser");
+const { Server } = require("socket.io");
+const env = require("./config/env");
+const corsOptions = require("./config/cors");
+const errorHandler = require("./middleware/errorHandler");
+const registerChatSocket = require("./sockets/chatSocket");
 
 const app = express();
-const PORT = process.env.PORT || 5000;
-
-const corsOptions = {
-  origin: function (origin, callback) {
-    const allowedOrigins = [
-      "http://localhost:3000",
-      "http://127.0.0.1:3000",
-      "http://192.168.1.9:3000",
-      /^http:\/\/192\.168\.\d+\.\d+:3000$/,
-      /^http:\/\/10\.\d+\.\d+\.\d+:3000$/,
-    ];
-
-    if (!origin) {
-      return callback(null, true);
-    }
-
-    const isAllowed = allowedOrigins.some((allowed) => {
-      if (typeof allowed === "string") {
-        return origin === allowed;
-      }
-      return allowed.test(origin);
-    });
-
-    callback(null, isAllowed);
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: env.clientUrl,
+    credentials: true,
   },
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-  exposedHeaders: ["Authorization"],
-  preflightContinue: false,
-  optionsSuccessStatus: 204,
-};
+});
+registerChatSocket(io);
+app.set("io", io);
 
+app.use(helmet());
 app.use(cors(corsOptions));
 app.use(express.json());
+app.use(cookieParser());
+app.use("/uploads", express.static("uploads"));
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 const authRoutes = require("./routes/authRoutes");
-app.use("/api/auth", authRoutes);
+const productRoutes = require("./routes/productRoutes");
+const uploadRoutes = require("./routes/uploadRoutes");
+const chatRoutes = require("./routes/chatRoutes");
+app.use("/api/auth", authLimiter, authRoutes);
+app.use("/api/products", productRoutes);
+app.use("/api/uploads", uploadRoutes);
+app.use("/api/chat", chatRoutes);
 
-// MongoDB Connection
+const cleanupStaleIndexes = async () => {
+  try {
+    const usersCollection = mongoose.connection.collection("users");
+    const indexes = await usersCollection.indexes();
+    const hasLegacyPhoneNumberIndex = indexes.some(
+      (idx) => idx.name === "phoneNumber_1"
+    );
+
+    if (hasLegacyPhoneNumberIndex) {
+      await usersCollection.dropIndex("phoneNumber_1");
+      console.log("Dropped legacy index: phoneNumber_1");
+    }
+  } catch (error) {
+    console.warn("Index cleanup skipped:", error.message);
+  }
+};
+
 mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => console.log("✅ MongoDB connected successfully!"))
+  .connect(env.mongoUri)
+  .then(async () => {
+    console.log("MongoDB connected");
+    await cleanupStaleIndexes();
+  })
   .catch((err) => {
-    console.error("❌ MongoDB connection error:", err.message);
+    console.error("MongoDB connection error:", err.message);
     process.exit(1);
   });
 
-// Sample Route
 app.get("/", (req, res) => {
-  res.send("🌐 Campus App Backend is alive!");
+  res.json({ message: "Campus App Backend is alive" });
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Backend server is up and running on port ${PORT}!`);
-  console.log(
-    `🌐 Accessible at: http://localhost:${PORT} or http://0.0.0.0:${PORT}`
-  );
+app.use(errorHandler);
+
+server.listen(env.port, "0.0.0.0", () => {
+  console.log(`Backend server running on port ${env.port}`);
 });
