@@ -6,7 +6,12 @@ const staticOrigins = [
   "http://127.0.0.1:3000",
 ];
 
-const dynamicOrigins = [/^http:\/\/192\.168\.\d+\.\d+:3000$/, /^http:\/\/10\.\d+\.\d+\.\d+:3000$/];
+const dynamicOrigins = [
+  /^http:\/\/localhost:\d+$/,
+  /^http:\/\/127\.0\.0\.1:\d+$/,
+  /^http:\/\/192\.168\.\d+\.\d+:\d+$/,
+  /^http:\/\/10\.\d+\.\d+\.\d+:\d+$/,
+];
 
 module.exports = {
   origin(origin, callback) {

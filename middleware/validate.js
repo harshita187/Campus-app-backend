@@ -1,7 +1,7 @@
 const ApiError = require("../utils/ApiError");
 
-const validate = (schema) => (req, _res, next) => {
-  const { value, error } = schema.validate(req.body, {
+const validate = (schema, source = "body") => (req, _res, next) => {
+  const { value, error } = schema.validate(req[source], {
     abortEarly: false,
     stripUnknown: true,
   });
@@ -11,7 +11,7 @@ const validate = (schema) => (req, _res, next) => {
     return next(new ApiError(400, message));
   }
 
-  req.body = value;
+  req[source] = value;
   return next();
 };
 

@@ -29,4 +29,15 @@ const createProductSchema = Joi.object({
 
 const updateProductSchema = Joi.object(baseProduct).min(1);
 
-module.exports = { createProductSchema, updateProductSchema };
+const listProductsQuerySchema = Joi.object({
+  q: Joi.string().trim().allow(""),
+  category: Joi.string()
+    .trim()
+    .valid("Notes", "Cycle", "Dress", "Cooler", "Electronics", "Furniture", "Others"),
+  condition: Joi.string().trim().valid("Like New", "Excellent", "Good", "Fair"),
+  sort: Joi.string().valid("newest", "oldest", "price-low", "price-high").default("newest"),
+  page: Joi.number().integer().min(1).default(1),
+  limit: Joi.number().integer().min(1).max(24).default(12),
+});
+
+module.exports = { createProductSchema, updateProductSchema, listProductsQuerySchema };
