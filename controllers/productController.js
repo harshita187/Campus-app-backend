@@ -29,17 +29,26 @@ const listProducts = async (req, res) => {
     "price-high": { price: -1 },
   };
 
-  const skip = (Number(page) - 1) * Number(limit);
+  const pageNum = Number(page);
+  const limitNum = Number(limit);
+  const skip = (pageNum - 1) * limitNum;
   const [items, total] = await Promise.all([
     Product.find(filter)
       .sort(sortMap[sort] || sortMap.newest)
       .skip(skip)
-      .limit(Number(limit))
-      .populate("sellerId", "name email"),
+      .limit(limitNum)
+      .populate("sellerId", "name email")
+      .lean(),
     Product.countDocuments(filter),
   ]);
 
-  res.json({ items, page: Number(page), limit: Number(limit), total });
+  res.json({
+    items,
+    page: pageNum,
+    limit: limitNum,
+    total,
+    totalPages: Math.max(1, Math.ceil(total / limitNum)),
+  });
 };
 
 const getProductById = async (req, res) => {

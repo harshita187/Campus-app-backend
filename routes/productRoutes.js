@@ -5,6 +5,7 @@ const asyncHandler = require("../utils/asyncHandler");
 const {
   createProductSchema,
   updateProductSchema,
+  listProductsQuerySchema,
 } = require("../validators/productValidators");
 const {
   createProduct,
@@ -16,7 +17,7 @@ const {
 
 const router = express.Router();
 
-router.get("/", asyncHandler(listProducts));
+router.get("/", validate(listProductsQuerySchema, "query"), asyncHandler(listProducts));
 router.get("/:id", asyncHandler(getProductById));
 router.post("/", verifyToken, validate(createProductSchema), asyncHandler(createProduct));
 router.put("/:id", verifyToken, validate(updateProductSchema), asyncHandler(updateProduct));

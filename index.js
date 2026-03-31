@@ -1,6 +1,7 @@
 const express = require("express");
 const http = require("http");
 const mongoose = require("mongoose");
+const path = require("path");
 const cors = require("cors");
 const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
@@ -15,7 +16,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: env.clientUrl,
+    origin: corsOptions.origin,
     credentials: true,
   },
 });
@@ -26,7 +27,7 @@ app.use(helmet());
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
-app.use("/uploads", express.static("uploads"));
+app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

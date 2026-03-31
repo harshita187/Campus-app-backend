@@ -27,7 +27,8 @@ const upload = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: 5 * 1024 * 1024,
+    // Allow higher-quality marketplace photos without frequent client-side compression.
+    fileSize: 15 * 1024 * 1024,
   },
 });
 
