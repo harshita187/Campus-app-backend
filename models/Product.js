@@ -10,6 +10,13 @@ const productSchema = new mongoose.Schema(
     images: [{ type: String, required: true }],
     sellerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     status: { type: String, enum: ["active", "sold", "hidden"], default: "active" },
+    pickupLocation: { type: String, trim: true, default: "" },
+    negotiable: { type: Boolean, default: true },
+    urgency: {
+      type: String,
+      enum: ["none", "moving_out", "flash_sale"],
+      default: "none",
+    },
   },
   { timestamps: true }
 );

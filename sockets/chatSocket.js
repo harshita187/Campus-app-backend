@@ -17,6 +17,9 @@ const registerChatSocket = (io) => {
   });
 
   io.on("connection", (socket) => {
+    const uid = String(socket.user.id);
+    socket.join(`user:${uid}`);
+
     socket.on("chat:joinConversation", async ({ conversationId }) => {
       if (!conversationId) return;
       const convo = await Conversation.findById(conversationId);
@@ -47,6 +50,10 @@ const registerChatSocket = (io) => {
 
       const populatedMessage = await message.populate("senderId", "name email");
       io.to(`conversation:${conversationId}`).emit("chat:newMessage", populatedMessage);
+      const senderStr = String(userId);
+      const activity = { conversationId, senderId: senderStr };
+      io.to(`user:${String(convo.buyerId)}`).emit("chat:activity", activity);
+      io.to(`user:${String(convo.sellerId)}`).emit("chat:activity", activity);
     });
   });
 };

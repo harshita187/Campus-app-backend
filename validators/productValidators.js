@@ -13,8 +13,21 @@ const baseProduct = {
     "Furniture",
     "Others"
   ),
-  condition: Joi.string().trim().valid("Like New", "Excellent", "Good", "Fair"),
+  condition: Joi.string()
+    .trim()
+    .valid(
+      "Like New",
+      "Excellent",
+      "Good",
+      "Fair",
+      "Brand New",
+      "Open Box",
+      "Heavily Used"
+    ),
   images: Joi.array().items(Joi.string().uri()).min(1).max(5),
+  pickupLocation: Joi.string().trim().max(80).allow(""),
+  negotiable: Joi.boolean(),
+  urgency: Joi.string().valid("none", "moving_out", "flash_sale").optional(),
 };
 
 const createProductSchema = Joi.object({
@@ -34,10 +47,24 @@ const listProductsQuerySchema = Joi.object({
   category: Joi.string()
     .trim()
     .valid("Notes", "Cycle", "Dress", "Cooler", "Electronics", "Furniture", "Others"),
-  condition: Joi.string().trim().valid("Like New", "Excellent", "Good", "Fair"),
+  condition: Joi.string()
+    .trim()
+    .valid(
+      "Like New",
+      "Excellent",
+      "Good",
+      "Fair",
+      "Brand New",
+      "Open Box",
+      "Heavily Used"
+    ),
   sort: Joi.string().valid("newest", "oldest", "price-low", "price-high").default("newest"),
   page: Joi.number().integer().min(1).default(1),
   limit: Joi.number().integer().min(1).max(24).default(12),
+  mine: Joi.string().valid("true", "1", "false", "0", "").optional(),
+  minPrice: Joi.number().min(0).optional(),
+  maxPrice: Joi.number().min(0).optional(),
+  urgency: Joi.string().valid("moving_out", "flash_sale").optional(),
 });
 
 module.exports = { createProductSchema, updateProductSchema, listProductsQuerySchema };
