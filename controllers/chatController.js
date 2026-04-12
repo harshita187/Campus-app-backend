@@ -81,7 +81,14 @@ const createMessage = async (req, res) => {
 
   const io = req.app.get("io");
   if (io) {
-    io.to(`conversation:${conversation._id}`).emit("chat:newMessage", populatedMessage);
+    const cid = String(conversation._id);
+    io.to(`conversation:${cid}`).emit("chat:newMessage", populatedMessage);
+    const senderStr = String(req.user.id);
+    const buyerStr = String(conversation.buyerId);
+    const sellerStr = String(conversation.sellerId);
+    const activity = { conversationId: conversation._id, senderId: senderStr };
+    io.to(`user:${buyerStr}`).emit("chat:activity", activity);
+    io.to(`user:${sellerStr}`).emit("chat:activity", activity);
   }
 
   res.status(201).json(populatedMessage);
