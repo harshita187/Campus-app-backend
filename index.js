@@ -23,11 +23,24 @@ const io = new Server(server, {
 registerChatSocket(io);
 app.set("io", io);
 
-app.use(helmet());
+// Allow marketplace images on :3000 to load files served from this API (:5001).
+// Helmet's default CORP is "same-origin", which blocks cross-origin <img> usage.
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
-app.use("/uploads", express.static(path.join(__dirname, "uploads")));
+app.use(
+  "/uploads",
+  express.static(path.join(__dirname, "uploads"), {
+    setHeaders(res) {
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    },
+  })
+);
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -62,11 +75,77 @@ const cleanupStaleIndexes = async () => {
   }
 };
 
+const migrateUserProductCampusAndRoles = async () => {
+  const User = require("./models/User");
+  const Product = require("./models/Product");
+  const {
+    getCollegeLabel,
+    DEFAULT_COLLEGE_ID,
+    isValidCollegeId,
+  } = require("./config/colleges");
+
+  const roleRes = await User.updateMany(
+    { role: { $exists: false } },
+    { $set: { role: "both" } }
+  );
+  if (roleRes.modifiedCount) {
+    console.log(`Backfilled user.role: ${roleRes.modifiedCount}`);
+  }
+
+  const usersNeedCampus = await User.find({
+    $or: [{ campusName: { $exists: false } }, { campusName: null }, { campusName: "" }],
+  })
+    .select("collegeId")
+    .lean();
+
+  let userCampusWrites = 0;
+  for (const u of usersNeedCampus) {
+    const slug =
+      u.collegeId && String(u.collegeId).trim() && isValidCollegeId(u.collegeId)
+        ? u.collegeId.trim()
+        : DEFAULT_COLLEGE_ID;
+    const campusName = getCollegeLabel(slug) || "Campus";
+    const set = { campusName };
+    if (!u.collegeId || !String(u.collegeId).trim()) {
+      set.collegeId = slug;
+    }
+    await User.updateOne({ _id: u._id }, { $set: set });
+    userCampusWrites += 1;
+  }
+  if (userCampusWrites) {
+    console.log(`Backfilled user.campusName: ${userCampusWrites}`);
+  }
+
+  const productsNeedCampus = await Product.find({
+    $or: [{ campusName: { $exists: false } }, { campusName: null }, { campusName: "" }],
+  })
+    .select("sellerId collegeId")
+    .lean();
+
+  let productCampusWrites = 0;
+  for (const p of productsNeedCampus) {
+    let campusName = "";
+    if (p.sellerId) {
+      const seller = await User.findById(p.sellerId).select("campusName").lean();
+      campusName = (seller?.campusName && seller.campusName.trim()) || "";
+    }
+    if (!campusName) {
+      campusName = getCollegeLabel(p.collegeId) || "Campus";
+    }
+    await Product.updateOne({ _id: p._id }, { $set: { campusName } });
+    productCampusWrites += 1;
+  }
+  if (productCampusWrites) {
+    console.log(`Backfilled product.campusName: ${productCampusWrites}`);
+  }
+};
+
 mongoose
   .connect(env.mongoUri)
   .then(async () => {
     console.log("MongoDB connected");
     await cleanupStaleIndexes();
+    await migrateUserProductCampusAndRoles();
   })
   .catch((err) => {
     console.error("MongoDB connection error:", err.message);
@@ -81,4 +160,22 @@ app.use(errorHandler);
 
 server.listen(env.port, "0.0.0.0", () => {
   console.log(`Backend server running on port ${env.port}`);
+  console.log("Press Ctrl+C in this terminal to stop (not the arrow keys).");
 });
+
+function shutdown(signal) {
+  console.log(`\n${signal} received — closing server…`);
+  io.disconnectSockets(true);
+  server.close(async () => {
+    try {
+      await mongoose.connection.close();
+    } catch (_e) {
+      /* ignore */
+    }
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(1), 10_000).unref();
+}
+
+process.once("SIGINT", () => shutdown("SIGINT"));
+process.once("SIGTERM", () => shutdown("SIGTERM"));

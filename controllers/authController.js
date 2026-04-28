@@ -27,17 +27,27 @@ const shapeUser = (user) => ({
   name: user.name,
   email: user.email,
   phone: user.phone,
+  collegeId: user.collegeId,
+  campusName: user.campusName,
+  role: user.role,
 });
 
 const signup = async (req, res) => {
-  const { name, email, password, phone } = req.body;
+  const { name, email, password, phone, campusName, role } = req.body;
   const normalizedEmail = email.toLowerCase();
   const existingUser = await User.findOne({ email: normalizedEmail });
   if (existingUser) throw new ApiError(409, "User already exists");
 
   const hashedPassword = await bcrypt.hash(password, 10);
   try {
-    await User.create({ name, email: normalizedEmail, password: hashedPassword, phone });
+    await User.create({
+      name,
+      email: normalizedEmail,
+      password: hashedPassword,
+      phone,
+      campusName: campusName.trim(),
+      role,
+    });
   } catch (error) {
     if (error?.code === 11000) {
       const duplicateField = Object.keys(error.keyPattern || {})[0] || "field";
@@ -65,9 +75,9 @@ const login = async (req, res) => {
 };
 
 const me = async (req, res) => {
-  const user = await User.findById(req.user.id).select("-password");
+  const user = await User.findById(req.user.id).select("-password").lean();
   if (!user) throw new ApiError(404, "User not found");
-  res.json(user);
+  res.json({ ...user, id: user._id });
 };
 
 const refresh = async (req, res) => {
