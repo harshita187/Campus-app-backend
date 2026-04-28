@@ -4,11 +4,14 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
+    "stop": "sh -c 'for p in $(lsof -ti :5001 2>/dev/null); do kill -9 \"$p\" 2>/dev/null; done; exit 0'",
+    "restart": "npm run stop && npm start",
     "dev": "nodemon index.js",
     "lint": "node --check index.js",
     "format": "prettier --write \"**/*.{js,json}\"",
     "test": "node --test",
-    "test:auth": "node --test tests/auth.test.js"
+    "test:auth": "node --test tests/auth.test.js",
+    "seed": "node scripts/seed.js"
   },
   "keywords": [],
   "author": "",

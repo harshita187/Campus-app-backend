@@ -11,6 +11,8 @@ const signupSchema = Joi.object({
     .pattern(/[0-9]/, "number")
     .required(),
   phone: Joi.string().trim().min(8).max(20).required(),
+  campusName: Joi.string().trim().min(2).max(120).required(),
+  role: Joi.string().valid("buyer", "seller", "both").required(),
 });
 
 const loginSchema = Joi.object({

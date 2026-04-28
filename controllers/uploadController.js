@@ -9,7 +9,9 @@ const uploadImage = async (req, res) => {
   const fullUrl = `${req.protocol}://${req.get("host")}${relativePath}`;
 
   return res.status(201).json({
-    url: fullUrl,
+    // Prefer path-only so the client always resolves with its current API origin (avoids host mismatches).
+    url: relativePath,
+    fullUrl,
     filename: req.file.filename,
     mimetype: req.file.mimetype,
     size: req.file.size,

@@ -8,6 +8,20 @@ const productSchema = new mongoose.Schema(
     category: { type: String, required: true, trim: true },
     condition: { type: String, required: true, trim: true },
     images: [{ type: String, required: true }],
+    /** Optional known slug (legacy / curated list). */
+    collegeId: {
+      type: String,
+      trim: true,
+      maxlength: 48,
+      default: "",
+    },
+    /** Copied from seller at listing time — any institute name. */
+    campusName: {
+      type: String,
+      trim: true,
+      maxlength: 120,
+      default: "",
+    },
     sellerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     status: { type: String, enum: ["active", "sold", "hidden"], default: "active" },
     pickupLocation: { type: String, trim: true, default: "" },
@@ -17,6 +31,8 @@ const productSchema = new mongoose.Schema(
       enum: ["none", "moving_out", "flash_sale"],
       default: "none",
     },
+    /** Free-text tag when urgency is "none" (e.g. "Exam week rush") */
+    urgencyNote: { type: String, trim: true, maxlength: 120, default: "" },
   },
   { timestamps: true }
 );
@@ -25,5 +41,7 @@ productSchema.index({ title: "text", description: "text" });
 productSchema.index({ category: 1, createdAt: -1 });
 productSchema.index({ status: 1, createdAt: -1 });
 productSchema.index({ status: 1, category: 1, createdAt: -1 });
+productSchema.index({ status: 1, collegeId: 1, createdAt: -1 });
+productSchema.index({ status: 1, campusName: 1, createdAt: -1 });
 
 module.exports = mongoose.model("Product", productSchema);

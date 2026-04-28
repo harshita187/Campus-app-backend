@@ -12,6 +12,7 @@ const {
   createProduct,
   getPublicStats,
   listProducts,
+  listCollegesMeta,
   getProductById,
   updateProduct,
   deleteProduct,
@@ -26,6 +27,7 @@ router.get(
   asyncHandler(listProducts)
 );
 router.get("/stats/summary", asyncHandler(getPublicStats));
+router.get("/meta/colleges", asyncHandler(listCollegesMeta));
 router.get("/:id", asyncHandler(getProductById));
 router.post("/", verifyToken, validate(createProductSchema), asyncHandler(createProduct));
 router.put("/:id", verifyToken, validate(updateProductSchema), asyncHandler(updateProduct));
