@@ -33,14 +33,6 @@ app.use(
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(cookieParser());
-app.use(
-  "/uploads",
-  express.static(path.join(__dirname, "uploads"), {
-    setHeaders(res) {
-      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
-    },
-  })
-);
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -56,6 +48,16 @@ const chatRoutes = require("./routes/chatRoutes");
 app.use("/api/auth", authLimiter, authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/uploads", uploadRoutes);
+/** Some hosts (e.g. Cloud Run behind path rewrites) call POST /uploads/images without /api. */
+app.use("/uploads", uploadRoutes);
+app.use(
+  "/uploads",
+  express.static(path.join(__dirname, "uploads"), {
+    setHeaders(res) {
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    },
+  })
+);
 app.use("/api/chat", chatRoutes);
 
 const cleanupStaleIndexes = async () => {
