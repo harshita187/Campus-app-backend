@@ -9,6 +9,8 @@ test("signup validator accepts valid payload", () => {
     email: "test@college.edu",
     password: "Password123",
     phone: "9999999999",
+    campusName: "Test College",
+    role: "both",
   });
   assert.equal(error, undefined);
 });

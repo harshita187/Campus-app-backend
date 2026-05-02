@@ -18,5 +18,9 @@ module.exports = {
   jwtAccessTtl: process.env.JWT_ACCESS_TTL || "15m",
   jwtRefreshTtl: process.env.JWT_REFRESH_TTL || "7d",
   clientUrl: process.env.CLIENT_URL || "http://localhost:3000",
+  clientUrls: (process.env.CLIENT_URLS || "")
+    .split(",")
+    .map((url) => url.trim())
+    .filter(Boolean),
   cookieSecure: process.env.COOKIE_SECURE === "true",
 };
