@@ -1,22 +1,25 @@
 const env = require("./env");
 
-const staticOrigins = [
+const staticOrigins = new Set([
   env.clientUrl,
+  ...env.clientUrls,
   "http://localhost:3000",
   "http://127.0.0.1:3000",
-];
+]);
 
 const dynamicOrigins = [
   /^http:\/\/localhost:\d+$/,
   /^http:\/\/127\.0\.0\.1:\d+$/,
   /^http:\/\/192\.168\.\d+\.\d+:\d+$/,
   /^http:\/\/10\.\d+\.\d+\.\d+:\d+$/,
+  /^https:\/\/[a-z0-9-]+\.github\.io$/i,
+  /^https:\/\/[a-z0-9-]+\.github\.io\/[a-z0-9._-]+$/i,
 ];
 
 module.exports = {
   origin(origin, callback) {
     if (!origin) return callback(null, true);
-    const exact = staticOrigins.includes(origin);
+    const exact = staticOrigins.has(origin);
     const regex = dynamicOrigins.some((pattern) => pattern.test(origin));
     return callback(null, exact || regex);
   },
