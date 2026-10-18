@@ -15,7 +15,7 @@ const uploadImage = async (req, res) => {
     filename: req.file.filename,
     mimetype: req.file.mimetype,
     size: req.file.size,
-    ext: path.extname(req.file.originalname),
+    ext: path.extname(req.file.filename), // the extension we saved, never the client's
   });
 };
 

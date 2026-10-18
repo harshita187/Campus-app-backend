@@ -1,3 +1,4 @@
+const path = require("path");
 const dotenv = require("dotenv");
 
 dotenv.config();
@@ -23,4 +24,11 @@ module.exports = {
     .map((url) => url.trim())
     .filter(Boolean),
   cookieSecure: process.env.COOKIE_SECURE === "true",
+  /**
+   * Number of proxies in front of the app. Cloud Run's front end is 1 hop, so
+   * req.ip becomes the real client address (needed for per-client rate limits).
+   * Never use `true`: then any client could pick its own IP via X-Forwarded-For.
+   */
+  trustProxy: Number(process.env.TRUST_PROXY ?? 1),
+  uploadDir: process.env.UPLOAD_DIR || path.join(__dirname, "..", "uploads"),
 };

@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const toCampusKey = require("../utils/campusKey");
 
 const productSchema = new mongoose.Schema(
   {
@@ -22,6 +23,11 @@ const productSchema = new mongoose.Schema(
       maxlength: 120,
       default: "",
     },
+    /**
+     * Normalized copy of campusName ("mnit jaipur"), set automatically before saving.
+     * Campus filters use an exact match on it, which an index can serve.
+     */
+    campusKey: { type: String, default: "" },
     sellerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
     status: { type: String, enum: ["active", "sold", "hidden"], default: "active" },
     pickupLocation: { type: String, trim: true, default: "" },
@@ -37,11 +43,19 @@ const productSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+productSchema.pre("validate", function setCampusKey() {
+  this.campusKey = toCampusKey(this.campusName);
+});
+
+// Index order follows the ESR rule: Equality fields first (status, category, ...),
+// then the Sort fields (createdAt, _id). createdAt is also the 30-day range filter.
+// _id is the tie-breaker, so listings with the same createdAt have a fixed order
+// and pagination never shows one listing twice or skips one.
 productSchema.index({ title: "text", description: "text" });
 productSchema.index({ category: 1, createdAt: -1 });
-productSchema.index({ status: 1, createdAt: -1 });
-productSchema.index({ status: 1, category: 1, createdAt: -1 });
-productSchema.index({ status: 1, collegeId: 1, createdAt: -1 });
-productSchema.index({ status: 1, campusName: 1, createdAt: -1 });
+productSchema.index({ status: 1, createdAt: -1, _id: -1 });
+productSchema.index({ status: 1, category: 1, createdAt: -1, _id: -1 });
+productSchema.index({ status: 1, collegeId: 1, createdAt: -1, _id: -1 });
+productSchema.index({ status: 1, campusKey: 1, createdAt: -1, _id: -1 });
 
 module.exports = mongoose.model("Product", productSchema);

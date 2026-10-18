@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/User");
 const ApiError = require("../utils/ApiError");
 const env = require("../config/env");
+const { verifyRefreshToken } = require("../utils/authTokens");
 
 const cookieOptions = {
   httpOnly: true,
@@ -81,15 +82,7 @@ const me = async (req, res) => {
 };
 
 const refresh = async (req, res) => {
-  const token = req.cookies?.refreshToken;
-  if (!token) throw new ApiError(401, "No refresh token provided");
-  const decoded = jwt.verify(token, env.jwtSecret);
-  if (decoded.type !== "refresh") throw new ApiError(401, "Invalid token type");
-
-  const user = await User.findById(decoded.id);
-  if (!user || user.refreshTokenVersion !== decoded.tokenVersion) {
-    throw new ApiError(401, "Invalid refresh token");
-  }
+  const user = await verifyRefreshToken(req.cookies?.refreshToken);
 
   const accessToken = signAccessToken(user);
   res.cookie("accessToken", accessToken, { ...cookieOptions, maxAge: 15 * 60 * 1000 });
@@ -104,6 +97,11 @@ const logout = async (req, res) => {
 
 const logoutAll = async (req, res) => {
   await User.findByIdAndUpdate(req.user.id, { $inc: { refreshTokenVersion: 1 } });
+  // Open chat sockets passed their token check when they connected, so the new
+  // version alone does not stop them. Close them now; reconnecting with the old
+  // token fails the handshake. (With several server instances this needs a shared
+  // Socket.IO adapter, such as Redis, to reach sockets on the other instances.)
+  req.app.get("io")?.in(`user:${req.user.id}`).disconnectSockets(true);
   res.clearCookie("accessToken", cookieOptions);
   res.clearCookie("refreshToken", cookieOptions);
   res.json({ message: "Logged out from all sessions" });

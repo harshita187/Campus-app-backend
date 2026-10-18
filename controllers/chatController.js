@@ -3,6 +3,8 @@ const Message = require("../models/Message");
 const Product = require("../models/Product");
 const ApiError = require("../utils/ApiError");
 
+const MAX_MESSAGE_LENGTH = 1000; // same limit as the Message model
+
 const isParticipant = (conversation, userId) =>
   String(conversation.buyerId) === String(userId) ||
   String(conversation.sellerId) === String(userId);
@@ -25,10 +27,26 @@ const createOrGetConversation = async (req, res) => {
   }
 
   const sellerId = product.sellerId;
-  let conversation = await Conversation.findOne({ productId, buyerId, sellerId });
+  const key = { productId: product._id, buyerId, sellerId };
 
-  if (!conversation) {
-    conversation = await Conversation.create({ productId, buyerId, sellerId });
+  // "Find, then create" breaks when two requests arrive together (a double-click):
+  // both find nothing, both insert, and the unique index rejects the second insert
+  // with E11000. An upsert does the find and the insert in one atomic operation.
+  let conversation;
+  let created = false;
+  try {
+    const result = await Conversation.findOneAndUpdate(
+      key,
+      { $setOnInsert: { lastMessageAt: new Date() } },
+      { upsert: true, new: true, includeResultMetadata: true }
+    );
+    conversation = result.value;
+    created = !result.lastErrorObject?.updatedExisting;
+  } catch (error) {
+    // Two upserts can still collide on the unique index. The other request has
+    // already created the conversation, so read it and return it.
+    if (error?.code !== 11000) throw error;
+    conversation = await Conversation.findOne(key);
   }
 
   const populated = await conversation.populate([
@@ -37,7 +55,8 @@ const createOrGetConversation = async (req, res) => {
     { path: "sellerId", select: "name email" },
   ]);
 
-  res.status(201).json(populated);
+  // 201 when this request created the conversation, 200 when it already existed.
+  res.status(created ? 201 : 200).json(populated);
 };
 
 const listConversations = async (req, res) => {
@@ -64,7 +83,10 @@ const listMessages = async (req, res) => {
 
 const createMessage = async (req, res) => {
   const { text } = req.body;
-  if (!text || !text.trim()) throw new ApiError(400, "Message text is required");
+  if (typeof text !== "string" || !text.trim()) throw new ApiError(400, "Message text is required");
+  if (text.trim().length > MAX_MESSAGE_LENGTH) {
+    throw new ApiError(400, `Message must be at most ${MAX_MESSAGE_LENGTH} characters`);
+  }
 
   const conversation = await ensureConversationAccess(req.params.conversationId, req.user.id);
 
