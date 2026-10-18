@@ -2,6 +2,8 @@ const Product = require("../models/Product");
 const User = require("../models/User");
 const ApiError = require("../utils/ApiError");
 const escapeRegex = require("../utils/escapeRegex");
+const toCampusKey = require("../utils/campusKey");
+const { encodeCursor, decodeCursor } = require("../utils/cursor");
 const {
   getCollegeLabel,
   getNearbyCollegeIds,
@@ -19,6 +21,18 @@ function listingCampusLabel(doc) {
   const n = typeof doc.campusName === "string" && doc.campusName.trim();
   if (n) return doc.campusName.trim();
   return getCollegeLabel(doc.collegeId);
+}
+
+/** Adds display labels to a listing and its seller (the shape the frontend already uses). */
+function shapeListing(doc) {
+  return {
+    ...doc,
+    collegeLabel: listingCampusLabel(doc),
+    sellerId:
+      doc.sellerId && typeof doc.sellerId === "object"
+        ? { ...doc.sellerId, collegeLabel: listingCampusLabel(doc.sellerId) }
+        : doc.sellerId,
+  };
 }
 
 const createProduct = async (req, res) => {
@@ -162,6 +176,7 @@ const listProducts = async (req, res) => {
     college,
     collegeScope = "all",
     campusQ,
+    cursor,
   } = req.query;
 
   const filter = { status: "active" };
@@ -184,7 +199,7 @@ const listProducts = async (req, res) => {
       const official = getCollegeLabel(collegeSlug);
       const or = [{ collegeId: collegeSlug }];
       if (official) {
-        or.push({ campusName: new RegExp(`^${escapeRegex(official)}$`, "i") });
+        or.push({ campusKey: toCampusKey(official) });
       }
       filter.$or = or;
     } else if (
@@ -200,7 +215,7 @@ const listProducts = async (req, res) => {
       const u = await User.findById(req.user.id).select("collegeId campusName").lean();
       const mineName = (u?.campusName || "").trim();
       if (mineName) {
-        filter.campusName = new RegExp(`^${escapeRegex(mineName)}$`, "i");
+        filter.campusKey = toCampusKey(mineName);
       } else {
         const slug = normalizeCollegeId(u?.collegeId);
         if (!slug) {
@@ -219,14 +234,11 @@ const listProducts = async (req, res) => {
       if (mineSlug) {
         const nearby = getNearbyCollegeIds(mineSlug);
         const ids = [mineSlug, ...nearby];
-        const or = [{ collegeId: { $in: ids } }];
-        for (const id of ids) {
-          const lab = getCollegeLabel(id);
-          if (lab) {
-            or.push({ campusName: new RegExp(`^${escapeRegex(lab)}$`, "i") });
-          }
+        const campusKeys = ids.map(getCollegeLabel).filter(Boolean).map(toCampusKey);
+        filter.$or = [{ collegeId: { $in: ids } }];
+        if (campusKeys.length) {
+          filter.$or.push({ campusKey: { $in: campusKeys } });
         }
-        filter.$or = or;
       } else {
         const mineName = (u?.campusName || "").trim();
         if (!mineName) {
@@ -235,7 +247,7 @@ const listProducts = async (req, res) => {
             "Nearby filter works best with a known campus profile; set your campus name first"
           );
         }
-        filter.campusName = new RegExp(`^${escapeRegex(mineName)}$`, "i");
+        filter.campusKey = toCampusKey(mineName);
       }
     }
   }
@@ -258,44 +270,78 @@ const listProducts = async (req, res) => {
   }
   if (Object.keys(priceBounds).length) filter.price = priceBounds;
 
+  // Every sort ends with _id, so rows with equal createdAt or price always come
+  // back in the same order. Without it, a listing can show up on two pages.
   const sortMap = {
-    newest: { createdAt: -1 },
-    oldest: { createdAt: 1 },
-    "price-low": { price: 1 },
-    "price-high": { price: -1 },
+    newest: { createdAt: -1, _id: -1 },
+    oldest: { createdAt: 1, _id: 1 },
+    "price-low": { price: 1, _id: 1 },
+    "price-high": { price: -1, _id: -1 },
   };
-
-  const pageNum = Number(page);
+  const sortKey = sortMap[sort] ? sort : "newest";
+  const timeSorted = sortKey === "newest" || sortKey === "oldest";
   const limitNum = Number(limit);
+  const sellerFields = "name email collegeId campusName role";
+
+  // Cursor mode: "give me the listings after this one". The query starts right
+  // after the cursor using the index, so a deep page costs the same as page 1,
+  // and listings added between requests cannot shift or repeat items.
+  if (cursor) {
+    if (!timeSorted) {
+      throw new ApiError(400, "cursor works only with sort=newest or sort=oldest");
+    }
+    const after = decodeCursor(cursor);
+    if (!after) throw new ApiError(400, "Invalid cursor");
+    const op = sortKey === "newest" ? "$lt" : "$gt";
+    // MongoDB cannot turn the $or below into index bounds, so on its own the
+    // scan would start at the newest listing and walk past every earlier page.
+    // This plain range clause lets the index jump straight to the cursor.
+    const startAtCursor = {
+      createdAt: sortKey === "newest" ? { $lte: after.createdAt } : { $gte: after.createdAt },
+    };
+    const afterCursor = {
+      $or: [
+        { createdAt: { [op]: after.createdAt } },
+        { createdAt: after.createdAt, _id: { [op]: after.id } },
+      ],
+    };
+    // Fetch one extra row to learn whether another page exists.
+    const rows = await Product.find({ $and: [filter, startAtCursor, afterCursor] })
+      .sort(sortMap[sortKey])
+      .limit(limitNum + 1)
+      .populate("sellerId", sellerFields)
+      .lean();
+    const hasMore = rows.length > limitNum;
+    const items = hasMore ? rows.slice(0, limitNum) : rows;
+    return res.json({
+      items: items.map(shapeListing),
+      limit: limitNum,
+      nextCursor: hasMore ? encodeCursor(items[items.length - 1]) : null,
+    });
+  }
+
+  // Page mode (used by the website): skip/limit plus a total count.
+  const pageNum = Number(page);
   const skip = (pageNum - 1) * limitNum;
   const [items, total] = await Promise.all([
     Product.find(filter)
-      .sort(sortMap[sort] || sortMap.newest)
+      .sort(sortMap[sortKey])
       .skip(skip)
       .limit(limitNum)
-      .populate("sellerId", "name email collegeId campusName role")
+      .populate("sellerId", sellerFields)
       .lean(),
     Product.countDocuments(filter),
   ]);
 
-  const itemsOut = items.map((doc) => ({
-    ...doc,
-    collegeLabel: listingCampusLabel(doc),
-    sellerId:
-      doc.sellerId && typeof doc.sellerId === "object"
-        ? {
-            ...doc.sellerId,
-            collegeLabel: listingCampusLabel(doc.sellerId),
-          }
-        : doc.sellerId,
-  }));
-
+  const hasMore = skip + items.length < total;
   res.json({
-    items: itemsOut,
+    items: items.map(shapeListing),
     page: pageNum,
     limit: limitNum,
     total,
     totalPages: Math.max(1, Math.ceil(total / limitNum)),
+    // Clients that prefer cursor mode can continue from here.
+    nextCursor: timeSorted && hasMore && items.length ? encodeCursor(items[items.length - 1]) : null,
   });
 };
 

@@ -1,26 +1,28 @@
-const jwt = require("jsonwebtoken");
-const env = require("../config/env");
+const ApiError = require("../utils/ApiError");
+const { readAccessToken, verifyAccessToken } = require("../utils/authTokens");
 
 /**
- * Attaches req.user when a valid Bearer / cookie token is present.
- * Does not reject when missing or invalid (req.user stays undefined).
+ * Attaches req.user when a valid, unrevoked access token is present.
+ * Does not reject when the token is missing or invalid (req.user stays undefined).
  */
-function optionalAuth(req, res, next) {
-  const authHeader = req.headers.authorization;
-  const bearerToken =
-    authHeader && authHeader.startsWith("Bearer ") ? authHeader.split(" ")[1] : null;
-  const token = bearerToken || req.cookies?.accessToken;
-
+async function optionalAuth(req, res, next) {
+  const token = readAccessToken(req);
   if (!token) {
     return next();
   }
 
   try {
-    req.user = jwt.verify(token, env.jwtSecret);
-  } catch {
-    req.user = undefined;
+    req.user = await verifyAccessToken(token);
+  } catch (err) {
+    // A bad or revoked token just means "not signed in". Anything else (for
+    // example the database being down) is a real error and must not be hidden.
+    if (err instanceof ApiError && err.statusCode === 401) {
+      req.user = undefined;
+    } else {
+      return next(err);
+    }
   }
-  next();
+  return next();
 }
 
 module.exports = optionalAuth;
